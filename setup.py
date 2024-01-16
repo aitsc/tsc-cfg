@@ -9,7 +9,7 @@ else:
 
 setup(
     name='tsc-cfg',
-    version='0.1',
+    version='0.2',
     description="自定义的配置文件",
     long_description=long_description,
     long_description_content_type="text/markdown",
