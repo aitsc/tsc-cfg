@@ -140,7 +140,8 @@ class Cfg(metaclass=SafeAttributeAccessor):
               return_kv: bool = False,
               default: Any = None,
               allow_default: bool = False,
-              ) -> Union[Any, Tuple[str, Any]]:
+              t: T = None,
+              ) -> Union[Any, Tuple[str, Any], T, Tuple[str, T]]:
         """获取静态变量中的内容
 
         Args:
@@ -150,6 +151,7 @@ class Cfg(metaclass=SafeAttributeAccessor):
                 如果 key 是 int, 则返回的 key 是原始的 str
             default (Any, optional): 默认值v, 如果 key 不存在则返回默认值
             allow_default (bool, optional): 是否允许返回默认值, 否则会抛出异常
+            t (T, optional): 返回值的类型, 用于类型注释
 
         Returns:
             Union[Any, Tuple[str, Any]]: 静态变量中的内容
@@ -286,7 +288,11 @@ class Cfg(metaclass=SafeAttributeAccessor):
                 type.__setattr__(cls, key, deepcopy(value))
     
     @classmethod
-    def _pop_(cls, key: Union[str, int], return_kv: bool = False) -> Union[Any, Tuple[str, Any]]:
+    def _pop_(cls, 
+              key: Union[str, int], 
+              return_kv: bool = False,
+              t: T = None,
+              ) -> Union[Any, Tuple[str, Any], T, Tuple[str, T]]:
         """删除静态变量并取出内容
 
         Args:
@@ -294,6 +300,7 @@ class Cfg(metaclass=SafeAttributeAccessor):
                 注意 key 为 int 则删除的复杂度为O(n)
             return_kv (bool, optional): 是否同时返回 key 和 value
                 如果 key 是 int, 则返回的 key 是原始的 str
+            t (T, optional): 返回值的类型, 用于类型注释
 
         Returns:
             Union[Any, Tuple[str, Any]]: 删除的内容
@@ -498,6 +505,7 @@ if __name__ == '__main__':
             'c': (3,),
         }
 
+    x = MyClass._get_('NestedClass', t=MyClass.NestedClass).nested_var
     print(MyClass.model_dump_code(keep_class_newline=True))
     # print(Cfg_.model_dump_code())
     print(MyClass._len_)
