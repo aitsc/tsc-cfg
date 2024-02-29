@@ -58,6 +58,12 @@ class KeyNotFound:
         if self.use_raise:
             raise KeyError('KEY_NOT_FOUND')
         return "KEY_NOT_FOUND"
+    
+    def __getattr__(self, key: str) -> 'KeyNotFound':
+        """用点访问时，返回自身属性"""
+        if self.use_raise:
+            raise KeyError('KEY_NOT_FOUND')
+        return self
 
 
 KEY_NOT_FOUND = KeyNotFound()
@@ -538,3 +544,4 @@ if __name__ == '__main__':
     MyClass.abcdefg = MyClass['abcdefg'] = 1234
     print(MyClass['abcdefg'])
     print(MyClass['static_var1.a'])
+    print(KEY_NOT_FOUND.abc.asd)
