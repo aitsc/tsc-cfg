@@ -1,6 +1,6 @@
 import redis
 import json
-from typing import Any, List, Tuple, Callable
+from typing import Any, List, Tuple, Callable, Union, Optional
 from tsc_base import dict_to_pair, pair_to_dict, get, put
 import re
 from jsonpath_ng import parse, jsonpath
@@ -15,7 +15,7 @@ class GlobalInfo:
                  key_name: str,
                  sub_path: str = '',
                  database: redis.Redis = None,
-                 config: dict | list | None = None,
+                 config: Optional[Union[dict, list]] = None,
                  allow_new_key: bool = True,
                  reuse_root: bool = False,
                  jsonpath_parse_cache_maxsize: int = 1000,
@@ -60,7 +60,7 @@ class GlobalInfo:
                     raise ValueError(f'path does not exist: {_path}')
                 self._execute_command('SET', _path, '{}')
 
-    def _get_path(self, key: str | int | None = None) -> str:
+    def _get_path(self, key: Optional[Union[str, int]] = None) -> str:
         p = ''
         if self.sub_path:
             p += self.sub_path
@@ -72,7 +72,7 @@ class GlobalInfo:
         assert p
         return p
 
-    def _decode_value(self, value: bytes | str, json_type: str = None) -> Any:
+    def _decode_value(self, value: Union[bytes, str], json_type: str = None) -> Any:
         decoded_value = value.decode('utf-8') if isinstance(value, bytes) else value
         if json_type is None:
             json_type = self._json_type
@@ -87,7 +87,7 @@ class GlobalInfo:
         else:
             return None
 
-    def __getitem__(self, key: str | int) -> 'GlobalInfo':
+    def __getitem__(self, key: Union[str, int]) -> 'GlobalInfo':
         return type(self)(
             key_name=self.key_name,
             sub_path=self._get_path(key),
@@ -95,7 +95,7 @@ class GlobalInfo:
             allow_new_key=self.allow_new_key,
         )
 
-    def __setitem__(self, key: str | int | None, value: Any):
+    def __setitem__(self, key: Optional[Union[str, int]], value: Any) -> None:
         if isinstance(value, type(self)):
             return
         path = self._get_path(key)
@@ -103,7 +103,7 @@ class GlobalInfo:
             self._ensure_path_exists(path)
         self._execute_command('SET', path, self._dumps(value))
 
-    def __iadd__(self, other: int | float | list) -> 'GlobalInfo':
+    def __iadd__(self, other: Union[int, float, List]) -> 'GlobalInfo':
         json_type = self._json_type
         if isinstance(other, (int, float)) and json_type in ['integer', 'number']:
             self._execute_command('NUMINCRBY', self._get_path(), other)
@@ -114,7 +114,7 @@ class GlobalInfo:
             raise TypeError(f'Error type: {type(other)}, {json_type}')
         return self
 
-    def __isub__(self, other: int | float) -> 'GlobalInfo':
+    def __isub__(self, other: Union[int, float]) -> 'GlobalInfo':
         if isinstance(other, (int, float)):
             self.__iadd__(-other)
         else:
@@ -127,7 +127,7 @@ class GlobalInfo:
         except TypeError:
             return bool(self.v)
 
-    def __len__(self) -> int | None:
+    def __len__(self) -> Optional[int]:
         json_type = self._json_type
         if json_type == 'string':
             return self._execute_command('STRLEN', self._get_path())
@@ -144,7 +144,7 @@ class GlobalInfo:
     def append(self, value: Any):
         self._execute_command('ARRAPPEND', self._get_path(), self._dumps(value))
 
-    def pop(self, key: str | int = -1) -> Any:
+    def pop(self, key: Union[str, int] = -1) -> Any:
         json_type = self._json_type
         if isinstance(key, str) and json_type == 'object':
             script = """
@@ -160,7 +160,7 @@ class GlobalInfo:
             raise TypeError(f'Error type: {type(key)}, {json_type}')
         return self._decode_value(value)
     
-    def delete(self, key: str | int | None = None) -> int:
+    def delete(self, key: Optional[Union[str, int]] = None) -> int:
         # key=None 删除自身
         return self._execute_command('DEL', self._get_path(key))
     
@@ -192,28 +192,27 @@ class GlobalInfo:
         return self._decode_value(value)
 
     @property
-    def type(self) -> type | None:
+    def type(self) -> Optional[type]:
         json_type = self._json_type
-        match json_type:
-            case 'string':
-                return str
-            case 'array':
-                return list
-            case 'object':
-                return dict
-            case 'integer':
-                return int
-            case 'number':
-                return float
-            case 'boolean':
-                return bool
-            case 'null':
-                return type(None)
-            case _:
-                return None
+        if json_type == 'string':
+            return str
+        elif json_type == 'array':
+            return list
+        elif json_type == 'object':
+            return dict
+        elif json_type == 'integer':
+            return int
+        elif json_type == 'number':
+            return float
+        elif json_type == 'boolean':
+            return bool
+        elif json_type == 'null':
+            return type(None)
+        else:
+            return None
             
     @property
-    def parent(self) -> 'GlobalInfo | None':
+    def parent(self) -> Optional['GlobalInfo']:
         if self.sub_path == '.':
             return None
         path_L = self._split_path(self.sub_path)
@@ -228,7 +227,7 @@ class GlobalInfo:
         )
 
     @property
-    def _json_type(self) -> str | None:
+    def _json_type(self) -> Optional[str]:
         ret: bytes = self._execute_command('TYPE', self.sub_path)
         if ret is None:  # path 不存在
             return None
@@ -239,7 +238,7 @@ class GlobalInfo:
         return list(filter(None, cls.split_path_re.split(path)))
 
     @staticmethod
-    def _dumps(value: Any) -> int | float | str | bool | None:
+    def _dumps(value: Any) -> Optional[Union[int, float, str, bool]]:
         if isinstance(value, (list, dict, str, bool, type(None))):
             value = json.dumps(value)
         elif not isinstance(value, (int, float)):
@@ -254,7 +253,7 @@ class GlobalInfoMem:  # 模拟一个无需redis的内存版本
                  key_name: str,
                  sub_path: str = '',  # 简单的jsonpath
                  database: redis.Redis = None,
-                 config: dict | list | None = None,
+                 config: Optional[Union[dict, list]] = None,
                  allow_new_key: bool = True,
                  jsonpath_parse_cache_maxsize: int = 1000,
                  **kwargs,
@@ -271,7 +270,7 @@ class GlobalInfoMem:  # 模拟一个无需redis的内存版本
         self.jsonpath_parse: Callable[[str], jsonpath.Child] = lru_cache(
             maxsize=jsonpath_parse_cache_maxsize)(lambda string: parse(string))
 
-    def _get_path(self, key: str | int | None = None) -> str:
+    def _get_path(self, key: Optional[Union[str, int]] = None) -> str:
         p = ''
         if self.sub_path:
             p += self.sub_path
@@ -290,7 +289,7 @@ class GlobalInfoMem:  # 模拟一个无需redis的内存版本
         assert p
         return p
 
-    def __getitem__(self, key: str | int) -> 'GlobalInfoMem':
+    def __getitem__(self, key: Union[str, int]) -> 'GlobalInfoMem':
         return type(self)(
             key_name=self.key_name,
             sub_path=self._get_path(key),
@@ -299,7 +298,7 @@ class GlobalInfoMem:  # 模拟一个无需redis的内存版本
             allow_new_key=self.allow_new_key,
         )
 
-    def __setitem__(self, key: str | int | None, value: Any):
+    def __setitem__(self, key: Optional[Union[str, int]], value: Any):
         if isinstance(value, type(self)):
             return
         path = self._get_path(key)
@@ -309,7 +308,7 @@ class GlobalInfoMem:  # 模拟一个无需redis的内存版本
         else:
             jsonpath_expr.update(self.config, value)
 
-    def __iadd__(self, other: int | float | list) -> 'GlobalInfoMem':
+    def __iadd__(self, other: Union[int, float, list]) -> 'GlobalInfoMem':
         _type = self.type
         if isinstance(other, (int, float)) and _type in [int, float]:
             keys = self._path_to_keys(self.sub_path)
@@ -324,7 +323,7 @@ class GlobalInfoMem:  # 模拟一个无需redis的内存版本
             raise TypeError(f'Error type: {type(other)}, {_type}')
         return self
 
-    def __isub__(self, other: int | float) -> 'GlobalInfo':
+    def __isub__(self, other: Union[int, float]) -> 'GlobalInfo':
         if isinstance(other, (int, float)):
             self.__iadd__(-other)
         else:
@@ -345,7 +344,7 @@ class GlobalInfoMem:  # 模拟一个无需redis的内存版本
         v: list = self.v
         v.append(value)
 
-    def pop(self, key: str | int = -1) -> Any:
+    def pop(self, key: Union[str, int] = -1) -> Any:
         _type = self.type
         if isinstance(key, str) and _type == dict:
             keys = self._path_to_keys(self._get_path(key))
@@ -360,7 +359,7 @@ class GlobalInfoMem:  # 模拟一个无需redis的内存版本
             raise TypeError(f'Error type: {type(key)}, {_type}')
         return value
     
-    def delete(self, key: str | int | None = None) -> int:
+    def delete(self, key: Optional[Union[str, int]] = None) -> int:
         # key=None 删除自身
         if key is None:
             keys = self._path_to_keys(self._get_path())
@@ -402,11 +401,11 @@ class GlobalInfoMem:  # 模拟一个无需redis的内存版本
         return matchs[0].value
 
     @property
-    def type(self) -> type | None:
+    def type(self) -> Optional[type]:
         return type(self.v)
             
     @property
-    def parent(self) -> 'GlobalInfoMem | None':
+    def parent(self) -> Optional['GlobalInfoMem']:
         if self.sub_path == '.':
             return None
         path_L = self._split_path(self.sub_path)
@@ -426,7 +425,7 @@ class GlobalInfoMem:  # 模拟一个无需redis的内存版本
         return list(filter(None, cls.split_path_re.split(path)))
     
     @classmethod
-    def _path_to_keys(cls, path: str) -> List[str | int]:
+    def _path_to_keys(cls, path: str) -> List[Union[str, int]]:
         path_L = cls._split_path(path)
         keys = []
         for p in path_L:
