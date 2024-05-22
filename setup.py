@@ -9,7 +9,7 @@ else:
 
 setup(
     name='tsc-cfg',
-    version='0.4',
+    version='0.5',
     description="自定义的配置文件",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -30,6 +30,7 @@ setup(
         'watchdog',
         'redis',
         'jsonpath-ng',
+        'PyYAML',
     ],
     extras_require={
         'recommended': [
@@ -37,6 +38,7 @@ setup(
             'watchdog==3.0.0',
             'redis==5.0.1',
             'jsonpath-ng==1.6.0',
+            'PyYAML==6.0.1',
         ]
     }
 )

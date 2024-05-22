@@ -204,8 +204,9 @@ class Cfg(metaclass=SafeAttributeAccessor):
                 新变量会尽量递归转换为配置类, 除非无法转换或者祖先中有配置类可以直接参考, 以及原始配置就不是配置类
             create_new (bool, optional): 是否允许创建新的变量
             cover_old (bool, optional): 是否允许覆盖旧的变量
+                普通list直接整体覆盖, 可以变成配置类的list按照int key编号覆盖
             old_define (Callable[[Any, Any], bool], optional): 输入 (old, new) 返回old是否是否旧值
-                只有 cover_old=True 才会调用
+                只有 cover_old=False 才会调用
                 例如 lambda old, new: not old 可以表示旧值是 None 或 '' 等空值的时候才覆盖
             ancestors_has_cfg (bool, optional): value 递归中的祖先中是否有配置类, 主要用于递归
                 设置为 True 则尽量不将一般变量的 value 及其递归转换为配置类

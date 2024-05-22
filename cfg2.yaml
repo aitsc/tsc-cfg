@@ -1,0 +1,8 @@
+test:
+  test:
+    b: [1,2]
+    你好:
+      abc: ab
+
+test3:
+  t: 2

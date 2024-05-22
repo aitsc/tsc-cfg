@@ -1,9 +1,6 @@
 import unittest
 import redis
-try:
-    from .global_info import GlobalInfo, GlobalInfoMem
-except:
-    from global_info import GlobalInfo, GlobalInfoMem
+from tsc_cfg import GlobalInfo, GlobalInfoMem
 
 
 class TestGlobalInfo(unittest.TestCase):
