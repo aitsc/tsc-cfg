@@ -217,8 +217,8 @@ class Cfg(metaclass=SafeAttributeAccessor):
             direct_assign_func (Optional[Callable[[Union[str, int], Any, Any], Any]], optional): 非配置类的直接赋值函数
                 第一个参数是 key (可能是递归后的), 第二个参数是 old (key 对应的原来值), 第三个参数是 new (key 对应的新值), 返回修改后的实际 value
                 None 等价于: lambda key, this, value: deepcopy(value)
-                可以用于格式转换, 例如来自 json 的 list 转换为 str:
-                    lambda k, t, v: set(v) if isinstance(t, set) and isinstance(v, list) else deepcopy(v)
+                可以用于格式转换, 例如来自 json 的 list 转换为 set/tuple:
+                    lambda k, t, v: type(t)(v) if isinstance(t, (set, tuple)) and isinstance(v, list) else deepcopy(v)
         """
         assert cls._is_config_class_(cls), 'model_deepcopy must be called on a config class'
         assert cls._is_config_value_(value), f'value {value} is not valid'
