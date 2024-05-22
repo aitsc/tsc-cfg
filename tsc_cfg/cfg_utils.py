@@ -34,7 +34,7 @@ class ReloadCfgHandler(FileSystemEventHandler):
         self._observer = Observer()
         self._observer.schedule(self, path=os.path.dirname(module.__file__), recursive=False)
         self._observer.start()
-        atexit.register(self._observer.stop)
+        atexit.register(self.stop)
 
     def reset_timer(self, path, opt):
         if path in self._timers:
@@ -73,7 +73,8 @@ class ReloadCfgHandler(FileSystemEventHandler):
         self._yaml_handlers.clear()
     
     def add_yaml(
-        self, *paths: str,
+        self,
+        *paths: str,
         delay: Optional[float] = None,
         logger: Optional[logging.Logger] = None,
         **kwargs,
@@ -169,7 +170,7 @@ class ReloadYamlHandler(FileSystemEventHandler):
         self._observer = Observer()
         self._observer.schedule(self, path=self.path, recursive=True)
         self._observer.start()
-        atexit.register(self._observer.stop)
+        atexit.register(self.stop)
 
     def reset_timer(self, path, opt):
         if path in self._timers:
@@ -266,3 +267,15 @@ class ReloadYamlHandler(FileSystemEventHandler):
         for timer in self._timers.values():
             timer.cancel()
         self._timers.clear()
+
+
+ALL_CFG_HANDLERS: Dict[str, ReloadCfgHandler] = {}
+
+
+def get_cfg_handler(module: ModuleType, **kwargs) -> ReloadCfgHandler:
+    if module.__file__ in ALL_CFG_HANDLERS:
+        return ALL_CFG_HANDLERS[module.__file__]
+    else:
+        handler = ReloadCfgHandler(module, **kwargs)
+        ALL_CFG_HANDLERS[module.__file__] = handler
+        return handler

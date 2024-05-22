@@ -64,7 +64,7 @@ def test_cfg():
 
 
 def test_cfg_utils():
-    cfg_handler = ReloadCfgHandler(cfg).add_yaml(
+    cfg_handler = get_cfg_handler(cfg).add_yaml(
         'cfg.yaml',
         'cfg2.yaml'
     )
