@@ -72,8 +72,7 @@ def test_cfg_utils():
     cfg_handler.del_yaml('cfg.yaml')
     
     while True:
-        print(cfg.test.model_dump_code())
-        print(cfg.test2.model_dump_code())
+        print(module_model_dump_code(cfg))
         input('Press Enter to print cfg...\n')
 
 if __name__ == '__main__':

@@ -88,6 +88,7 @@ class ReloadCfgHandler(FileSystemEventHandler):
                 重复的 key 后面更新的会覆盖前面
             delay (float, optional): 延迟处理时间, 单位秒
             logger (Optional[logging.Logger], optional): 日志记录器, 否则使用 print
+            **kwargs (Any): 传递给 ReloadYamlHandler 的其他参数
 
         Returns:
             ReloadCfgHandler: 返回自身
@@ -137,6 +138,7 @@ class ReloadYamlHandler(FileSystemEventHandler):
         logger: Optional[logging.Logger] = None,
         create_path: bool = True,
         limit_value_type: bool = True,
+        allow_new_key: bool = True,
     ):
         """延迟处理文件变化事件，使用多线程实现延迟，不适合大量文件变化
 
@@ -151,6 +153,7 @@ class ReloadYamlHandler(FileSystemEventHandler):
             create_path (bool, optional): 是否创建不存在的路径, 防止文件不存在报错
                 后缀名为 .yaml 则创建文件，否则创建文件夹
             limit_value_type (bool, optional): 限制值的类型, 除 None 以外不允许 yaml 的 value 类型和配置类不同
+            allow_new_key (bool, optional): 允许新的 key, 不在配置类中的 key 也会加入配置类
         """
         if create_path and not os.path.exists(path):
             if path.endswith('.yaml'):
@@ -165,6 +168,7 @@ class ReloadYamlHandler(FileSystemEventHandler):
         self.path = path
         self.delay = delay
         self.limit_value_type = limit_value_type
+        self.allow_new_key = allow_new_key
         self._timers: Dict[str, threading.Timer] = {}  # 用字典存储文件和对应的定时器
         self.load_all()
         self._observer = Observer()
@@ -224,6 +228,7 @@ class ReloadYamlHandler(FileSystemEventHandler):
                         value=v,
                         cover_old=self.limit_value_type,
                         old_define=self.old_define,
+                        create_new=self.allow_new_key,
                         direct_assign_func=self.direct_assign_func,
                     )
                 setattr(self.module, k, vv)
@@ -279,3 +284,42 @@ def get_cfg_handler(module: ModuleType, **kwargs) -> ReloadCfgHandler:
         handler = ReloadCfgHandler(module, **kwargs)
         ALL_CFG_HANDLERS[module.__file__] = handler
         return handler
+
+
+def module_model_dump(module: ModuleType, **kwargs) -> dict:
+    """将模块的配置类整体转成字典
+
+    Args:
+        module (ModuleType): 模块
+        **kwargs: 传递给 Cfg.model_dump 的参数
+
+    Returns:
+        dict: 返回结果
+    """
+    dump = {}
+    for k, v in module.__dict__.items():
+        if Cfg._is_config_class_(v):
+            v: Cfg
+            dump[k] = v.model_dump(**kwargs)
+    return dump
+
+
+def module_model_dump_code(module: ModuleType, **kwargs) -> Union[str, list]:
+    """将模块的配置类整体转成字典的代码
+
+    Args:
+        module (ModuleType): 模块
+        **kwargs: 传递给 Cfg.model_dump 的参数
+
+    Returns:
+        str: 返回结果
+    """
+    dump = []
+    for k, v in module.__dict__.items():
+        if Cfg._is_config_class_(v):
+            v: Cfg
+            dump.append(v.model_dump_code(**kwargs))
+    if dump and isinstance(dump[0], list):
+        return sum(dump, [])
+    else:
+        return '\n\n'.join(dump)
