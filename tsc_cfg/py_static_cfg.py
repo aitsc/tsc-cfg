@@ -193,6 +193,7 @@ class Cfg(metaclass=SafeAttributeAccessor):
               ancestors_has_cfg: bool = False,
               raise_new: bool = True,
               new_bases: Optional[Tuple[type, ...]] = None,
+              direct_assign_func: Optional[Callable[[Union[str, int], Any, Any], Any]] = None,
               ):
         """设置静态变量中的内容
 
@@ -206,13 +207,18 @@ class Cfg(metaclass=SafeAttributeAccessor):
             cover_old (bool, optional): 是否允许覆盖旧的变量
                 普通list直接整体覆盖, 可以变成配置类的list按照int key编号覆盖
             old_define (Callable[[Any, Any], bool], optional): 输入 (old, new) 返回old是否是否旧值
-                只有 cover_old=False 才会调用
+                只有 cover_old=True 才会调用, 此时如果返回 True (即定义 old 是旧值) 才会覆盖
                 例如 lambda old, new: not old 可以表示旧值是 None 或 '' 等空值的时候才覆盖
             ancestors_has_cfg (bool, optional): value 递归中的祖先中是否有配置类, 主要用于递归
                 设置为 True 则尽量不将一般变量的 value 及其递归转换为配置类
             raise_new (bool, optional): 是否抛出构建了默认参数中没有的参数的异常, 前提是 create_new=False
             new_bases (Optional[Tuple[type, ...]], optional): 新建配置类的基类, 默认为 None 则继承自 (Cfg,)
                 也可以是 cls.__bases__ 继承自原来的基类，要求至少有个类是 Cfg 或其子类
+            direct_assign_func (Optional[Callable[[Union[str, int], Any, Any], Any]], optional): 非配置类的直接赋值函数
+                第一个参数是 key (可能是递归后的), 第二个参数是 old (key 对应的原来值), 第三个参数是 new (key 对应的新值), 返回修改后的实际 value
+                None 等价于: lambda key, this, value: deepcopy(value)
+                可以用于格式转换, 例如来自 json 的 list 转换为 str:
+                    lambda k, t, v: set(v) if isinstance(t, set) and isinstance(v, list) else deepcopy(v)
         """
         assert cls._is_config_class_(cls), 'model_deepcopy must be called on a config class'
         assert cls._is_config_value_(value), f'value {value} is not valid'
@@ -228,7 +234,8 @@ class Cfg(metaclass=SafeAttributeAccessor):
             for k, v in iter_value:
                 assert k is not None, f'k is not valid'
                 cls._set_(k, v, create_new=create_new, cover_old=cover_old, old_define=old_define,
-                          ancestors_has_cfg=ancestors_has_cfg, raise_new=raise_new, new_bases=new_bases)
+                          ancestors_has_cfg=ancestors_has_cfg, raise_new=raise_new, new_bases=new_bases,
+                          direct_assign_func=direct_assign_func)
             return
         try:
             key, this = cls._get_(key, return_kv=True)
@@ -256,9 +263,10 @@ class Cfg(metaclass=SafeAttributeAccessor):
                 for k, v in iter_value:
                     assert k is not None, f'k is not valid'
                     this._set_(k, v, create_new=create_new, cover_old=cover_old, old_define=old_define,
-                               ancestors_has_cfg=ancestors_has_cfg, raise_new=raise_new, new_bases=new_bases)
+                               ancestors_has_cfg=ancestors_has_cfg, raise_new=raise_new, new_bases=new_bases,
+                               direct_assign_func=direct_assign_func)
             else:  # 无法转换为配置类，直接复制
-                type.__setattr__(cls, key, deepcopy(value))
+                type.__setattr__(cls, key, direct_assign_func(key, KEY_NOT_FOUND, value) if direct_assign_func else deepcopy(value))
             return
         
         # 拥有正常的 key 和同一级别的 this 和 value
@@ -273,13 +281,14 @@ class Cfg(metaclass=SafeAttributeAccessor):
                 isinstance(value, list) and any(isinstance(v, (dict, list)) for v in value)
             ):
                 iter_value = value.items() if isinstance(value, dict) else enumerate(value)
-            elif cover_old or old_define(this, value):  # 无法转换为配置类，直接复制
-                type.__setattr__(cls, key, deepcopy(value))
+            elif cover_old and old_define(this, value):  # 无法转换为配置类，直接复制
+                type.__setattr__(cls, key, direct_assign_func(key, this, value) if direct_assign_func else deepcopy(value))
             if iter_value is not None:  # 递归覆盖配置类
                 for k, v in iter_value:
                     assert k is not None, f'k is not valid'
                     this._set_(k, v, create_new=create_new, cover_old=cover_old, old_define=old_define,
-                               ancestors_has_cfg=ancestors_has_cfg, raise_new=raise_new, new_bases=new_bases)
+                               ancestors_has_cfg=ancestors_has_cfg, raise_new=raise_new, new_bases=new_bases,
+                               direct_assign_func=direct_assign_func)
         else:  # 原始配置不是配置类
             if cls._is_config_class_(value):  # this 不是类则不会再当类处理
                 value = value.model_dump(list_conversion=True)
@@ -291,8 +300,8 @@ class Cfg(metaclass=SafeAttributeAccessor):
                                  raise_new=raise_new,
                                  new_deepcopy=True)
                 type.__setattr__(cls, key, ret)
-            elif cover_old or old_define(this, value):  # 无法对齐，则直接覆盖
-                type.__setattr__(cls, key, deepcopy(value))
+            elif cover_old and old_define(this, value):  # 无法对齐，则直接覆盖
+                type.__setattr__(cls, key, direct_assign_func(key, this, value) if direct_assign_func else deepcopy(value))
     
     @classmethod
     def _pop_(cls, 
@@ -487,62 +496,3 @@ class Cfg(metaclass=SafeAttributeAccessor):
             else:
                 type.__setattr__(new_class, k, deepcopy(v))
         return new_class
-
-
-if __name__ == '__main__':
-    Cfg_ = Cfg
-    
-    class MyClass(Cfg_):
-        static_var: bool = False
-
-        class NestedClass(Cfg_, object):
-            nested_var: datetime = datetime.now()
-
-            class NestedClass(Cfg_):
-                nested_var = 10*2
-
-            class NestedClass2(Cfg_):
-                nested_var: Any = '20'
-
-        class Test(Cfg_):
-            ...
-        static_var1: Dict[str, Any] = {
-            'a': {},
-            'b': '2',
-            'c': (3,),
-        }
-
-    x = MyClass._get_('NestedClass', t=MyClass.NestedClass).nested_var
-    print(MyClass.model_dump_code(keep_class_newline=True))
-    # print(Cfg_.model_dump_code())
-    print(MyClass._len_)
-    print()
-
-    MyClass2 = MyClass.model_deepcopy('MyClass2')
-    MyClass.static_var1['a'][1] = 100
-    MyClass2.static_var1['a'][1] = 101
-    print(MyClass.static_var1)
-    print(MyClass2.static_var1)
-    print()
-    
-    print(create_unduplicated_key('a', {'a'}))
-    
-    MyClass2.NestedClass._set_('nested_var2', [{'a': [1, 2]}, 1], create_new=True)
-    MyClass2._set_(0, 1)
-    MyClass2._insert_(123, 2)
-    MyClass2._insert_([2, {'abc': {'test': 123}}, 4], 3, ['test', None, None])
-    print(MyClass2.model_dump_code())
-    print(MyClass._get_(1))
-    print()
-    
-    MyClass._set_(None, [1, 2, 3])
-    print(MyClass.model_dump_code())
-    print(MyClass._get_('a1234', allow_default=True))
-    
-    print('---------meta test---------')
-    # KEY_NOT_FOUND.use_raise = True
-    print(MyClass.abcdefg, MyClass[-1])
-    MyClass.abcdefg = MyClass['abcdefg'] = 1234
-    print(MyClass['abcdefg'])
-    print(MyClass['static_var1.a'])
-    print(KEY_NOT_FOUND.abc.asd)

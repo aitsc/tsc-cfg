@@ -4,10 +4,11 @@ import importlib
 import atexit
 import os
 import yaml
-from typing import Optional, Any, Dict, List
+from typing import Optional, Any, Dict, List, Union
 import threading
 import logging
 from types import ModuleType
+from copy import deepcopy
 from .py_static_cfg import Cfg
 
 
@@ -83,6 +84,7 @@ class ReloadCfgHandler(FileSystemEventHandler):
             *paths (str): 监听的yaml文件夹或文件路径
                 配置文件的文件名必须以 .yaml 结尾，不能以 . 开头
                 yaml 的 key 必须符合变量名的命名规范, 不能是任意的字符串, 否则转成普通对象或报错
+                重复的 key 后面更新的会覆盖前面
             delay (float, optional): 延迟处理时间, 单位秒
             logger (Optional[logging.Logger], optional): 日志记录器, 否则使用 print
 
@@ -142,6 +144,7 @@ class ReloadYamlHandler(FileSystemEventHandler):
             path (str): 监听的yaml文件夹或文件路径
                 配置文件的文件名必须以 .yaml 结尾，不能以 . 开头
                 yaml 的 key 必须符合变量名的命名规范, 不能是任意的字符串, 否则转成普通对象或报错
+                重复的 key 后面更新的会覆盖前面
             delay (float, optional): 延迟处理时间, 单位秒
             logger (Optional[logging.Logger], optional): 日志记录器, 否则使用 print
             create_path (bool, optional): 是否创建不存在的路径, 防止文件不存在报错
@@ -179,10 +182,17 @@ class ReloadYamlHandler(FileSystemEventHandler):
         if (  # 要求 old 和 new 都是 None 或者类型相同, 不然可能改变类型
             old is None or
             new is None or
-            type(old) == type(new)
+            type(old) == type(new) or
+            isinstance(old, (set, tuple)) and isinstance(new, list)
         ):
             return True
         raise TypeError(f"Cfg type mismatch: {type(old)} != {type(new)}, old={str(old)}, new={str(new)}")
+    
+    @staticmethod
+    def direct_assign_func(key: Union[str, int], old: Any, new: Any) -> Any:
+        if isinstance(old, (set, tuple)) and isinstance(new, list):
+            return type(old)(new)
+        return deepcopy(new)
     
     def load_all(self, opt: str = 'init'):
         if os.path.isdir(self.path):
@@ -211,8 +221,9 @@ class ReloadYamlHandler(FileSystemEventHandler):
                     vv._set_(
                         key=None,
                         value=v,
-                        cover_old=not self.limit_value_type,
+                        cover_old=self.limit_value_type,
                         old_define=self.old_define,
+                        direct_assign_func=self.direct_assign_func,
                     )
                 setattr(self.module, k, vv)
                 update_flag = True
