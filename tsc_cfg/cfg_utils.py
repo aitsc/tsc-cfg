@@ -215,6 +215,8 @@ class ReloadYamlHandler(FileSystemEventHandler):
         try:
             with open(path, 'r',encoding='utf-8') as f:
                 config = yaml.safe_load(f.read())
+                if config is None:
+                    config = {}
                 assert isinstance(config, dict), f"Config must be a dict, but got {type(config)}"
             update_flag = False
             for k, v in config.items():
