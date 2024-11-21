@@ -4,7 +4,7 @@ import importlib
 import atexit
 import os
 import yaml
-from typing import Optional, Any, Dict, List, Union
+from typing import Optional, Any, Dict, List, Union, Callable
 import threading
 import logging
 from types import ModuleType
@@ -77,6 +77,7 @@ class ReloadCfgHandler(FileSystemEventHandler):
         *paths: str,
         delay: Optional[float] = None,
         logger: Optional[logging.Logger] = None,
+        load_all_each_time: bool = False,
         **kwargs,
     ) -> 'ReloadCfgHandler':
         """添加监听的yaml文件夹或文件路径
@@ -88,11 +89,14 @@ class ReloadCfgHandler(FileSystemEventHandler):
                 重复的 key 后面更新的会覆盖前面
             delay (float, optional): 延迟处理时间, 单位秒
             logger (Optional[logging.Logger], optional): 日志记录器, 否则使用 print
+            load_all_each_time (bool): 每次有任何更新都重新加载所有 py/yaml 文件，防止yaml中的删除配置不生效, 但可能更新多次
             **kwargs (Any): 传递给 ReloadYamlHandler 的其他参数
 
         Returns:
             ReloadCfgHandler: 返回自身
         """
+        if load_all_each_time:
+            kwargs['cfg_update_func'] = lambda: self.process_event('yaml', 'by_yaml')
         for p in paths:
             p = os.path.normpath(p)
             if p in self._yaml_handlers:
@@ -139,6 +143,7 @@ class ReloadYamlHandler(FileSystemEventHandler):
         create_path: bool = True,
         limit_value_type: bool = True,
         allow_new_key: bool = True,
+        cfg_update_func: Optional[Callable[..., None]] = None,
     ):
         """延迟处理文件变化事件，使用多线程实现延迟，不适合大量文件变化
 
@@ -169,6 +174,7 @@ class ReloadYamlHandler(FileSystemEventHandler):
         self.delay = delay
         self.limit_value_type = limit_value_type
         self.allow_new_key = allow_new_key
+        self.cfg_update_func = cfg_update_func
         self._timers: Dict[str, threading.Timer] = {}  # 用字典存储文件和对应的定时器
         self.load_all()
         self._observer = Observer()
@@ -179,8 +185,19 @@ class ReloadYamlHandler(FileSystemEventHandler):
     def reset_timer(self, path, opt):
         if path in self._timers:
             self._timers[path].cancel()  # 取消已存在的定时器
-        self._timers[path] = threading.Timer(self.delay, self.process_event, [path, opt])
+        self._timers[path] = threading.Timer(self.delay, self.warp_process_event, [path, opt])
         self._timers[path].start()
+    
+    def warp_process_event(self, path: str, opt: str):
+        if self.cfg_update_func is None:
+            self.process_event(path, opt)
+        else:
+            self.cfg_update_func()
+            if opt:
+                if self.logger:
+                    self.logger.info(f"Reloaded by cfg yaml ({opt}) {path}")
+                else:
+                    print(f"Reloaded by cfg yaml ({opt}) {path}")
     
     @staticmethod
     def old_define(old: Any, new: Any) -> bool:

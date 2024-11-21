@@ -66,10 +66,13 @@ def test_cfg():
 def test_cfg_utils():
     cfg_handler = get_cfg_handler(cfg).add_yaml(
         'cfg.yaml',
-        'cfg2.yaml'
+        'cfg2.yaml',
+        load_all_each_time=True,
     )
     print(cfg_handler.yaml_paths)
     cfg_handler.del_yaml('cfg.yaml')
+    print('cfg.test.test1.a:', cfg.test.test.a)
+    print('cfg.test.test.a:', cfg.test.test1.a)
     
     while True:
         print(module_model_dump_code(cfg))

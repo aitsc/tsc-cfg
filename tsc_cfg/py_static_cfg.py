@@ -46,8 +46,15 @@ def unique_list_with_none(lst):
 
 class KeyNotFound:
     """用于标记 key 不存在的返回结果"""
-    def __init__(self, use_raise: bool = False):
-        self.use_raise = use_raise  # 是否使用抛出异常的方式
+    def __init__(self, use_raise: bool = False, try_example_key: Optional[str] = 'example_cfg'):
+        """初始化
+
+        Args:
+            use_raise (bool, optional): 是否使用抛出异常的方式表明key不存在
+            try_example_key (Optional[str], optional): 如果提供的 key 不存在，则尝试的例子 key
+        """
+        self.use_raise = use_raise
+        self.try_example_key = try_example_key
     
     def __bool__(self) -> bool:
         if self.use_raise:
@@ -72,7 +79,13 @@ KEY_NOT_FOUND = KeyNotFound()
 class SafeAttributeAccessor(type):
     def __getattr__(cls: 'Cfg', key: str) -> Union[Any, KeyNotFound]:
         """用点访问时，默认允许不存在的属性"""
-        return cls._get_(key, default=KEY_NOT_FOUND, allow_default=not KEY_NOT_FOUND.use_raise)
+        if not KEY_NOT_FOUND.try_example_key:
+            return cls._get_(key, default=KEY_NOT_FOUND, allow_default=not KEY_NOT_FOUND.use_raise)
+        # 点访问时，如果 key 不存在则尝试使用 try_example_key
+        try:
+            return cls._get_(key)
+        except:
+            return cls._get_(KEY_NOT_FOUND.try_example_key, default=KEY_NOT_FOUND, allow_default=not KEY_NOT_FOUND.use_raise)
     
     # def __setattr__(cls: 'Cfg', key: str, value: Any):
     #     """用点访问赋值时，更标准的设置属性"""
